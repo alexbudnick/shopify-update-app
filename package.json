@@ -1,0 +1,16 @@
+{
+  "name": "shopify-bulk-tools",
+  "version": "1.0.0-bulk-price-collections",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "sync-drafts": "node src/sync_drafts.js",
+    "bulk-shopify": "node src/bulk_shopify_csv.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}
