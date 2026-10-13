@@ -280,19 +280,39 @@ export async function getShopifyAccessToken() {
   return cachedShopifyToken;
 }
 
+let shopifyRestQueue = Promise.resolve();
+let lastShopifyRestStart = 0;
+
 export async function shopifyRequest(path, options = {}) {
-  const base = `https://${CFG.shopify.shop}.myshopify.com/admin/api/${CFG.shopify.apiVersion}`;
-  const token = await getShopifyAccessToken();
-  const res = await fetch(`${base}${path}`, {
-    ...options,
-    headers: {
-      "X-Shopify-Access-Token": token,
-      "Content-Type": "application/json",
-      ...(options.headers || {})
+  const run = async () => {
+    const base = `https://${CFG.shopify.shop}.myshopify.com/admin/api/${CFG.shopify.apiVersion}`;
+    const token = await getShopifyAccessToken();
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const waitMs = Math.max(0, 600 - (Date.now() - lastShopifyRestStart));
+      if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+      lastShopifyRestStart = Date.now();
+      const res = await fetch(`${base}${path}`, {
+        ...options,
+        headers: {
+          "X-Shopify-Access-Token": token,
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        }
+      });
+      if (res.status === 429 && attempt < 7) {
+        const retrySeconds = Number(res.headers.get("Retry-After"));
+        await res.text();
+        await new Promise(resolve => setTimeout(resolve,
+          Math.max(1000, Number.isFinite(retrySeconds) ? retrySeconds * 1000 : 2000)));
+        continue;
+      }
+      if (!res.ok) throw new Error(`Shopify request failed ${res.status}: ${await res.text()}`);
+      return res.json();
     }
-  });
-  if (!res.ok) throw new Error(`Shopify request failed ${res.status}: ${await res.text()}`);
-  return res.json();
+  };
+  const result = shopifyRestQueue.then(run);
+  shopifyRestQueue = result.catch(() => {});
+  return result;
 }
 
 export async function shopifyGraphqlRequest(query, variables = {}) {
